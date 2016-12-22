@@ -105,22 +105,20 @@ public abstract class TangoCameraRenderer extends Renderer {
     public void onTouchEvent(MotionEvent event) {
     }
 
-    public void connectToTangoCamera(Tango tango) {
+    public synchronized void connectToTangoCamera(Tango tango) {
         this.tango = tango;
         tangoCameraId = TangoCameraIntrinsics.TANGO_CAMERA_COLOR;
         tangoCameraIntrinsics = this.tango.getCameraIntrinsics(tangoCameraId);
         getCurrentScene().registerFrameCallback(sceneFrameCallback);
     }
 
-    public void disconnectFromTangoCamera() {
+    public synchronized void disconnectFromTangoCamera() {
         if (tango != null && tangoCameraId != INVALID_TANGO_CAMERA_ID) {
-            synchronized (this) {
-                getCurrentScene().unregisterFrameCallback(sceneFrameCallback);
-                tango.disconnectCamera(tangoCameraId);
-                tangoCameraTextureAvailable.set(false);
-                tangoCameraId = INVALID_TANGO_CAMERA_ID;
-                connectedTextureId = INVALID_TEXTURE_ID;
-            }
+            getCurrentScene().unregisterFrameCallback(sceneFrameCallback);
+            tango.disconnectCamera(tangoCameraId);
+            tangoCameraTextureAvailable.set(false);
+            tangoCameraId = INVALID_TANGO_CAMERA_ID;
+            connectedTextureId = INVALID_TEXTURE_ID;
         }
     }
 
@@ -188,15 +186,19 @@ public abstract class TangoCameraRenderer extends Renderer {
 
     private class SceneFrameCallback extends ASceneFrameCallback {
 
-        private final Matrix4 mProjection = new Matrix4();
+        private final Matrix4 projection = new Matrix4();
 
         @Override
         public void onPreFrame(long sceneTime, double deltaTime) {
             try {
                 synchronized (TangoCameraRenderer.this) {
+                    if (tangoCameraId == INVALID_TANGO_CAMERA_ID) {
+                        return;
+                    }
+
                     if (!sceneCameraConfigured) {
-                        projection(tangoCameraIntrinsics, mProjection);
-                        getCurrentCamera().setProjectionMatrix(mProjection);
+                        projection(tangoCameraIntrinsics, projection);
+                        getCurrentCamera().setProjectionMatrix(projection);
                         sceneCameraConfigured = true;
                     }
 
