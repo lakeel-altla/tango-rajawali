@@ -19,6 +19,7 @@ import org.rajawali3d.renderer.Renderer;
 import org.rajawali3d.scene.ASceneFrameCallback;
 
 import android.content.Context;
+import android.support.annotation.NonNull;
 import android.util.Log;
 import android.view.MotionEvent;
 
@@ -26,7 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.microedition.khronos.opengles.GL10;
 
-public abstract class TangoCameraRenderer extends Renderer {
+public class TangoCameraRenderer extends Renderer {
 
     private static final String TAG = TangoCameraRenderer.class.getSimpleName();
 
@@ -58,9 +59,9 @@ public abstract class TangoCameraRenderer extends Renderer {
 
     private double updateTextureTimestamp;
 
-    private double updateCameraTransformationTimestamp;
+    private double updateCameraTransformTimestamp;
 
-    public TangoCameraRenderer(Context context) {
+    public TangoCameraRenderer(@NonNull Context context) {
         super(context);
     }
 
@@ -84,7 +85,8 @@ public abstract class TangoCameraRenderer extends Renderer {
         initSceneOverride();
     }
 
-    protected abstract void initSceneOverride();
+    protected void initSceneOverride() {
+    }
 
     /**
      * We need to override this method to mark the camera for re-configuration (set proper
@@ -105,7 +107,7 @@ public abstract class TangoCameraRenderer extends Renderer {
     public void onTouchEvent(MotionEvent event) {
     }
 
-    public synchronized void connectToTangoCamera(Tango tango) {
+    public synchronized void connectToTangoCamera(@NonNull Tango tango) {
         this.tango = tango;
         tangoCameraId = TangoCameraIntrinsics.TANGO_CAMERA_COLOR;
         tangoCameraIntrinsics = this.tango.getCameraIntrinsics(tangoCameraId);
@@ -126,7 +128,7 @@ public abstract class TangoCameraRenderer extends Renderer {
         tangoCameraTextureAvailable.set(true);
     }
 
-    protected TangoSupport.TangoMatrixTransformData getCameraMatrixTransformAtTime(double timestamp) {
+    private TangoSupport.TangoMatrixTransformData getCameraMatrixTransformAtTime(double timestamp) {
         // Get the color camera's pose at the specified time when the camera frame is updated.
         // Tango examples for Java use TangoSupport#getPoseAtTime, but we use TangoSupport#getMatrixTransformAtTime
         // according to Tango examples for C.
@@ -139,16 +141,17 @@ public abstract class TangoCameraRenderer extends Renderer {
                                                      0);
     }
 
-    /**
-     * Updates the pose of the current camera with the specified transform matrix.
-     *
-     * @param cameraTransform The matrix to transform the current camera.
-     */
-    protected void updateCameraPose(TangoSupport.TangoMatrixTransformData cameraTransform) {
-        cameraTransformer.transform(getCurrentCamera(), cameraTransform.matrix, currentCameraForward);
-        updateCameraTransformationTimestamp = cameraTransform.timestamp;
+    private void updateCameraTransform(@NonNull TangoSupport.TangoMatrixTransformData cameraTransform) {
+        cameraTransformer.transform(getCurrentCamera(),
+                                    cameraTransform.matrix,
+                                    currentCameraForward);
+        updateCameraTransformTimestamp = cameraTransform.timestamp;
+
+        // Notify that the camera transform is updated.
+        onCurrentCameraTransformUpdated(updateCameraTransformTimestamp);
     }
 
+    @NonNull
     protected final Vector3 getCurrentCameraForward() {
         return currentCameraForward;
     }
@@ -157,13 +160,19 @@ public abstract class TangoCameraRenderer extends Renderer {
         return updateTextureTimestamp;
     }
 
+    protected void onTangoCameraTextureUpdated(double timestamp) {
+    }
+
+    protected void onCurrentCameraTransformUpdated(double timestamp) {
+    }
+
     /**
      * Calculate the projection matrix from Tango camera intrinsics.
      *
      * @param intrinsics Tango camera intrinsics.
      * @param result     The matrix that holds the result.
      */
-    private static void projection(TangoCameraIntrinsics intrinsics, Matrix4 result) {
+    private static void projection(@NonNull TangoCameraIntrinsics intrinsics, @NonNull Matrix4 result) {
         // Uses frustumM to create a projection matrix taking into account calibrated camera
         // intrinsic parameter.
         // Reference: http://ksimek.github.io/2013/06/03/calibrated_cameras_in_opengl/
@@ -184,7 +193,7 @@ public abstract class TangoCameraRenderer extends Renderer {
                         near, far);
     }
 
-    private class SceneFrameCallback extends ASceneFrameCallback {
+    private final class SceneFrameCallback extends ASceneFrameCallback {
 
         private final Matrix4 projection = new Matrix4();
 
@@ -214,13 +223,14 @@ public abstract class TangoCameraRenderer extends Renderer {
 
                     if (tangoCameraTextureAvailable.compareAndSet(true, false)) {
                         updateTextureTimestamp = tango.updateTexture(tangoCameraId);
+                        onTangoCameraTextureUpdated(updateTextureTimestamp);
                     }
 
-                    if (updateTextureTimestamp > updateCameraTransformationTimestamp) {
+                    if (updateTextureTimestamp > updateCameraTransformTimestamp) {
                         TangoSupport.TangoMatrixTransformData transformData =
                                 getCameraMatrixTransformAtTime(updateTextureTimestamp);
                         if (transformData.statusCode == TangoPoseData.POSE_VALID) {
-                            updateCameraPose(transformData);
+                            updateCameraTransform(transformData);
                         } else {
                             Log.v(TAG, "Can't get a valid camera pose at time: " + updateTextureTimestamp);
                         }
@@ -248,7 +258,7 @@ public abstract class TangoCameraRenderer extends Renderer {
         }
     }
 
-    private static class CameraTransformer {
+    private class CameraTransformer {
 
         final Matrix4 transform = new Matrix4();
 
@@ -258,7 +268,7 @@ public abstract class TangoCameraRenderer extends Renderer {
 
         final Quaternion conjugateOrientation = new Quaternion();
 
-        void transform(Camera camera, float[] matrix, Vector3 cameraForward) {
+        void transform(@NonNull Camera camera, @NonNull float[] matrix, @NonNull Vector3 cameraForward) {
             // Convert arrays to a Matrix4 instance.
             transform.setAll(matrix);
             // Get the position from the matrix.
@@ -274,8 +284,8 @@ public abstract class TangoCameraRenderer extends Renderer {
             //
             // NOTE:
             //
-            // Rajawali and OpenGL are based on the right-handed one, but Quaternion#multiply(Vector3) used in
-            // Vector3#rotateBy(Quaternion) may be the left-handed coodinate system, I think.
+            // Rajawali and OpenGL are based on the right-handed coodinate system,
+            // but Quaternion#multiply(Vector3) used in Vector3#rotateBy(Quaternion) may be the left-handed one.
             // so we call Vector3#rotateBy with the conjugate of an orientation.
             cameraForward.setAll(0, 0, -1);
 
