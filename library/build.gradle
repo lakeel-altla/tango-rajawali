@@ -2,7 +2,7 @@ apply plugin: 'com.android.library'
 
 android {
     compileSdkVersion 25
-    buildToolsVersion "25.0.1"
+    buildToolsVersion "25.0.2"
     publishNonDefault true
 
     defaultConfig {
@@ -26,7 +26,7 @@ repositories {
 }
 
 dependencies {
-    compile 'com.android.support:appcompat-v7:25.1.0'
+    compile 'com.android.support:appcompat-v7:25.3.1'
     compile 'org.rajawali3d:rajawali:1.1.610'
     compile 'com.google.atap:tango:1.48'
     compile 'com.projecttango:tango-support:1.48'
